@@ -47,25 +47,46 @@ var circularBarChart = {
 		that.loadData(data);
 		// Animate changes
 		var bars = that.chart.selectAll('g');
-		bars.data(data);
-		bars.transition().duration(750)
+		var path = bars.selectAll('path')
+		    .datum(function(d){
+			d.prev = d.value;
+			d.value = data[d.index].value;
+			d.color = data[d.index].color;
+			d.endAngle = that.angleScale(d.value);
+			return d;
+		    })
+		path.attr('fill',function(d){return d.color})
+		path.transition().duration(750)
+		    .attrTween('d', tweenArc(function(d, i) {
+			return {
+			    startAngle: d.startAngle,
+			    endAngle: that.angleScale(d.prev)
+			};
+		    }));
+		
+		function tweenArc(b) {
+		    return function(a, i) {
+			var d = b.call(this, a, i), i = d3.interpolate(d, a);
+			for (var k in d) a[k] = d[k]; // update data
+			return function(t) { return that.arc(i(t)); };
+		    };
+		}
+
+		var text = bars.selectAll('text');
+		text.transition().duration(200)
 		    .attr('opacity',0)
 		    .each('end',function(){
-			var barUpdate = d3.transition(bars);
-			barUpdate.select('path')
-			    .attr('fill',function(d){return d.color})
-			    .attr('d',function(d,i){return that.arcFunc(d,i,that)});
-			barUpdate.select('text')
-			    .text(function(d){return that.numberFormat(d.value)});
-			bars.transition().duration(750).attr('opacity',1)
+			text.text(function(d){return that.numberFormat(d.value)});
+			text.transition().duration(750).attr('opacity',1)
 		    })
 	    },
-	    arcFunc:function(d,i,graph){
-		var arc = graph.arc
-		    .outerRadius(graph.radius-(i*graph.yScale.rangeBand()))
-		    .innerRadius(graph.radius-((i+1)*graph.yScale.rangeBand()))
-		    .startAngle(0).endAngle(graph.angleScale(d['value']));
-		return arc();
+	    getDatumFields: function(context,d,i){
+		d['index'] = i;
+		d['outerRadius'] = context.radius-(i*context.yScale.rangeBand());
+		d['innerRadius'] = context.radius-((i+1)*context.yScale.rangeBand());
+		d['startAngle'] = 0;
+		d['endAngle'] = context.angleScale(d.value);
+		return d;
 	    },
 	    render: function(data){
 		var that = this;
@@ -85,17 +106,18 @@ var circularBarChart = {
 		that.angleScale.domain([0,1]); // ToDo: define how to calculate max
 
 		var bars = that.chart.selectAll('g')
-		    .data(that.data).enter().append('g')
-		    .attr('opacity',1);
+		    .data(that.data).enter().append('g');
 		bars.append('path')
+		    .datum(function(d,i){return that.getDatumFields(that,d,i)})
 		    .attr('fill',function(d){return d.color})
-		    .attr('d',function(d,i){return that.arcFunc(d,i,that)})
+		    .attr('d',function(d,i){return that.arc(d)})
 		bars.append('text')
 		    .attr('y',function(d,i){
 			var band = that.yScale.rangeBand();
 			return 0-(that.radius-(i*band)-(band/2))
 		    })
 		    .attr('x',-50)
+		    .attr('opacity',1)
 		    .style('dominant-baseline','middle')
 		    .text(function(d){return that.numberFormat(d.value)})
 	    },
@@ -104,6 +126,7 @@ var circularBarChart = {
 	return graph
     }
 }
+
 var oas;
 var blah = [
     [{'name':'opc1','value':0.2500,'color':'#6e0d25'},
